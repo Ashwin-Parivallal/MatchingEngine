@@ -5,10 +5,12 @@
 #include<vector>
 #include<algorithm>
 #include<chrono>
+#include<memory>
 
 //same person inserting same price for same share
 //multithreading
 //smart pointers
+//take into account time
 
 class Stock;
 class Request;
@@ -24,17 +26,17 @@ enum TransactionType{
 
 class Stock{
     std::string name;
-    std::set<Request*> buyOrders;
-    std::set<Request*> sellOrders;
+    std::set<std::shared_ptr<Request>> buyOrders;
+    std::set<std::shared_ptr<Request>> sellOrders;
 public:
-    Stock(std::string name, TransactionType orderType, Request* r){
+    Stock(std::string name, TransactionType orderType, const std::shared_ptr<Request>& r){
         switch (orderType){
             case TransactionType::BUY : { buyOrders.insert(r); break; }
             case TransactionType::SELL: { sellOrders.insert(r); break; }
         }
     }
-    std::set<Request*>& getBuyOrders(){ return buyOrders; }
-    std::set<Request*>& getSellOrders(){ return sellOrders; }
+    std::set<std::shared_ptr<Request>>& getBuyOrders(){ return buyOrders; }
+    std::set<std::shared_ptr<Request>>& getSellOrders(){ return sellOrders; }
 };
 
 
@@ -45,7 +47,7 @@ class Request{
     unsigned quantity;
 public:
     Request(std::string clientName, std::string stockName, unsigned quantity): clientName(clientName), stockName(stockName), reqTime(std::chrono::system_clock::now()), quantity(quantity){ }
-    virtual bool processRequest(std::unordered_map<std::string, Stock*>&);
+    virtual bool processRequest(std::unordered_map<std::string, std::unique_ptr<Stock>>&);
     virtual unsigned getPrice()const;
     void setQuantity(const unsigned q){ quantity = q; }
     unsigned& getQuantity(){ return quantity; }
@@ -54,33 +56,34 @@ public:
 };
 
 class BuyOrders: public Request{
-    unsigned price;
+    unsigned buyPrice;
 public:
-    virtual bool processRequest(std::unordered_map<std::string, Stock*>& stocks){
+    virtual bool processRequest(std::unordered_map<std::string, std::unique_ptr<Stock>>& stocks){
         auto& stockToBuy = stocks[getStockName()];
         auto& sellOrders = stockToBuy->getSellOrders();
-        auto& quantity = this->getQuantity();
-        while(!quantity){
+        auto& buyQuantity = this->getQuantity();
+        while(!buyQuantity){
             auto& minSellOrder = *std::min_element(sellOrders.begin(), sellOrders.end());
-            if(minSellOrder->getPrice() > price) break;
+            if(minSellOrder->getPrice() > buyPrice) break;
             auto& sellingQuantity = minSellOrder->getQuantity();
-            if(quantity <= sellingQuantity){
-                quantity = 0;
-                minSellOrder->setQuantity(sellingQuantity - quantity);
+            if(buyQuantity <= sellingQuantity){
+                buyQuantity = 0;
+                minSellOrder->setQuantity(sellingQuantity - buyQuantity);
+                f(!sellingQuantity) sellOrders.erase(minSellOrder);
                 return true;
             }
-            else{
-                quantity -= sellingQuantity;
+            else if(buyQuantity > sellingQuantity){
+                buyQuantity -= sellingQuantity;
+                sellOrders.erase(minSellOrder);
             }
-            if(!sellingQuantity) sellOrders.erase(minSellOrder);
         }
         return false;
     }
 
-    BuyOrders(std::string clientName, std::string stockName, unsigned quantity, unsigned price): Request(clientName, stockName, quantity), price(price){ }
+    BuyOrders(std::string clientName, std::string stockName, unsigned quantity, unsigned price): Request(clientName, stockName, quantity), buyPrice(price){ }
    
     virtual unsigned getPrice()const{
-        return price;
+        return buyPrice;
     }
     
     bool operator <(const BuyOrders* rhs)const{
@@ -89,34 +92,37 @@ public:
 };
 
 class SellOrders: public Request{
-    unsigned price;
+    unsigned sellPrice;
 public:
-    virtual bool processRequest(std::unordered_map<std::string, Stock*>& stocks){
+    virtual bool processRequest(std::unordered_map<std::string, std::unique_ptr<Stock>>& stocks){
         auto& stockToSell = stocks[getStockName()];
-        auto& buyOrders = stockToBuy->getBuyOrders();
-        auto& sellNum = this->getQuantity();
-        while(!sellNum){
-            auto& maxBuyOrder = *std::max_element(sellOrders.begin(), sellOrders.end());
-            if(maxBuyOrder->getPrice() < price) break;
+        auto& buyOrders = stockToSell->getBuyOrders();
+        auto& sellQuantity = this->getQuantity();
+        if(!sellQuantity) return true;
+        while(!sellQuantity){
+            auto& maxBuyOrder = *std::max_element(buyOrders.begin(), buyOrders.end());
+            if(maxBuyOrder->getPrice() < sellPrice) break;
             auto& buyingQuantity = maxBuyOrder->getQuantity();
-            if(sellNum <= buyingQuantity){
-                sellNum = 0;
-                //maxOrder->setQuantity(sellingQuantity - quantity);
+            if(sellQuantity <= buyingQuantity){
+                sellQuantity = 0;
+                maxBuyOrder->setQuantity(buyQuantity - sellQuantity);
+                if(!buyQuantity) buyOrders.erase(maxBuyOrder);
                 return true;
             }
-            else{
-                sellNum -= buyingQuantity;
+            else if(sellQuantity > buyingQuantity){
+                sellQuantity -= buyingQuantity;
+                buyingQuantity = 0;
+                buyOrders.erase(maxBuyOrder);
             }
-            if(!sellingQuantity) sellOrders.erase(minSellOrder);
         }
         
         return false;
     }
     
-    SellOrders(std::string clientName, std::string stockName, unsigned quantity, unsigned price): Request(clientName, stockName, quantity), price(price){ }
+    SellOrders(std::string clientName, std::string stockName, unsigned quantity, unsigned price): Request(clientName, stockName, quantity), sellPrice(price){ }
     
     virtual unsigned getPrice()const{
-        return price;
+        return sellPrice;
     }
     
     bool operator <(const SellOrders* rhs)const{
@@ -127,11 +133,12 @@ public:
 
 class MatchingEngine{
 private:
-    std::unordered_map<std::string, Stock*> stocks;
+    std::unordered_map<std::string, std::unique_ptr<Stock>> stocks;
     //static unsigned ID = 0;
-    std::vector<Request*> requests;
+    std::vector<std::shared_ptr<Request>> requests;
 public:
-    void run(){
+    void run(std::string msg){
+    std::cout << msg << std::endl;
         //Listen to port
         //if there is a new request
             //create a new request object
