@@ -1,11 +1,13 @@
-
 #include <stdio.h> 
 #include <netdb.h> 
 #include <netinet/in.h> 
 #include <stdlib.h> 
 #include <string.h> 
 #include <sys/socket.h> 
-#include <sys/types.h> 
+#include <sys/types.h>
+#include <unistd.h>
+#include<iostream>
+#include<string>
 #define MAX 80 
 #define PORT 8080 
 #define SA struct sockaddr 
@@ -22,15 +24,15 @@ void func(int sockfd)
         // read the message from client and copy it in buffer 
         read(sockfd, buff, sizeof(buff)); 
         // print buffer which contains the client contents 
-        printf("From client: %s\t To client : ", buff); 
+        printf("From client: %s", buff); 
         bzero(buff, MAX); 
         n = 0; 
         // copy server message in the buffer 
-        while ((buff[n++] = getchar()) != '\n') 
-            ; 
-  
+        //while ((buff[n++] = getchar()) != '\n') ; 
+        std::string str;
+            std::getline(std::cin, str);
         // and send that buffer to client 
-        write(sockfd, buff, sizeof(buff)); 
+        if(strlen(buff)) write(sockfd, buff, sizeof(buff)); 
   
         // if msg contains "Exit" then server exit and chat ended. 
         if (strncmp("exit", buff, 4) == 0) { 
@@ -43,7 +45,8 @@ void func(int sockfd)
 // Driver function 
 int main() 
 { 
-    int sockfd, connfd, len; 
+    int sockfd, connfd; 
+    unsigned int len; 
     struct sockaddr_in servaddr, cli; 
   
     // socket create and verification 

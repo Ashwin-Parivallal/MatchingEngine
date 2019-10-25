@@ -2,7 +2,12 @@
 #include<set>
 #include<unordered_map>
 #include<vector>
+#include<chrono>
+#include<string>
 
+class Request;  
+class BuyOrders;
+class SellOrders;
 
 enum TransactionType{
     SELL = 1,
@@ -15,16 +20,10 @@ class Stock{
     std::set<std::shared_ptr<Request>> buyOrders;
     std::set<std::shared_ptr<Request>> sellOrders;
 public:
-    Stock(std::string name, TransactionType orderType, const std::shared_ptr<Request>& r){
-        switch (orderType){
-            case TransactionType::BUY : { buyOrders.insert(r); break; }
-            case TransactionType::SELL: { sellOrders.insert(r); break; }
-        }
-    }
+    Stock(std::string, TransactionType, const std::shared_ptr<Request>&);
     std::set<std::shared_ptr<Request>>& getBuyOrders(){ return buyOrders; }
     std::set<std::shared_ptr<Request>>& getSellOrders(){ return sellOrders; }
 };
-
 
 class Request{
     std::string clientName;
@@ -32,30 +31,33 @@ class Request{
     std::chrono::system_clock::time_point reqTime;
     unsigned quantity;
 public:
-    Request(std::string clientName, std::string stockName, unsigned quantity): clientName(clientName), stockName(stockName), reqTime(std::chrono::system_clock::now()), quantity(quantity){ }
-    virtual bool processRequest(std::unordered_map<std::string, std::unique_ptr<Stock>>&);
-    virtual unsigned getPrice()const;
+    Request(std::string, std::string, unsigned);
+    virtual bool processRequest(std::unordered_map<std::string, std::unique_ptr<Stock>>&) {  }
+    virtual unsigned getPrice()const {  }
     void setQuantity(const unsigned q){ quantity = q; }
     unsigned& getQuantity(){ return quantity; }
     std::string getClientName()const{ return clientName; }
     std::string getStockName()const{ return stockName; }
+    virtual ~Request(){  }
 };
+
 
 class BuyOrders: public Request{
     unsigned buyPrice;
 public:
-    virtual bool processRequest(std::unordered_map<std::string, std::unique_ptr<Stock>>& stocks);
-    BuyOrders(std::string clientName, std::string stockName, unsigned quantity, unsigned price): Request(clientName, stockName, quantity), buyPrice(price){ }
-   
-    virtual unsigned getPrice()const;
-    bool operator <(const BuyOrders* rhs)const; 
+    BuyOrders(std::string, std::string, unsigned, unsigned);
+    bool processRequest(std::unordered_map<std::string, std::unique_ptr<Stock>>& stocks);
+    unsigned getPrice()const;
+    virtual~BuyOrders(){}
 };
 
 class SellOrders: public Request{
     unsigned sellPrice;
 public:
-    virtual bool processRequest(std::unordered_map<std::string, std::unique_ptr<Stock>>& stocks);
-    bool operator <(const SellOrders* rhs)const;
+    SellOrders(std::string clientName, std::string stockName, unsigned quantity, unsigned price);
+    bool processRequest(std::unordered_map<std::string, std::unique_ptr<Stock>>& stocks);
+    unsigned getPrice()const;
+    virtual ~SellOrders(){}
 };
 
 
